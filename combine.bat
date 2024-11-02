@@ -33,7 +33,9 @@ if exist "%outputFile%" (
     )
 )
 
+:: Create initial file with header
 echo # Combined Project Files > "%outputFile%"
+echo.>> "%outputFile%"
 
 :: Display what will be processed
 echo Processing folder: %scanFolder%
@@ -68,8 +70,7 @@ for %%x in (%extensions%) do (
         if "!includeFile!"=="true" (
             echo Adding: !relativePath!
             
-            :: Add file header and content
-            echo.>> "%outputFile%"
+            :: Add file header and content without extra dots
             echo ## !relativePath!>> "%outputFile%"
             echo ```%%x>> "%outputFile%"
             type "%%f" >> "%outputFile%"
@@ -82,6 +83,6 @@ for %%x in (%extensions%) do (
     )
 )
 
-
+echo.
 echo Finished! Added %fileCount% files to %outputFile%
 endlocal
