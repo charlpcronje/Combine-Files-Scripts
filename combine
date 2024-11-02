@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# Get input arguments
+scan_folder="${1:-.}"  # Default to current directory if not specified
+extensions="$2"
+exclusions="$3"
+
+# Ensure scan_folder is absolute path
+scan_folder=$(cd "$scan_folder" 2>/dev/null && pwd || echo "$scan_folder")
+
+# Initialize base output filename
+base_file="combined_project_files"
+output_file="$base_file.md"
+
+# Check if file exists and handle naming
+if [ -f "$output_file" ]; then
+    read -p "File $output_file already exists. Overwrite? (Y/N): " overwrite
+    if [[ ${overwrite,,} != "y" ]]; then
+        counter=1
+        while true; do
+            output_file="${base_file}_${counter}.md"
+            [ ! -f "$output_file" ] && break
+            ((counter++))
+        done
+        echo "Will use $output_file instead."
+    else
+        echo "Will overwrite $output_file"
+    fi
+fi
+
+# Create/overwrite output file with initial heading
+echo "# Combined Project Files" > "$output_file"
+
+# Display what will be processed
+echo "Processing folder: $scan_folder"
+echo "File types to include: $extensions"
+[ -n "$exclusions" ] && echo "Paths to exclude: $exclusions"
+
+# Convert space-separated extensions to find patterns
+if [ -n "$extensions" ]; then
+    ext_patterns=()
+    for ext in $extensions; do
+        ext_patterns+=(-name "*.$ext")
+        [ ${#ext_patterns[@]} -gt 0 ] && ext_patterns+=(-o)
+    done
+    # Remove the last -o if it exists
+    [ ${#ext_patterns[@]} -gt 0 ] && unset 'ext_patterns[${#ext_patterns[@]}-1]'
+else
+    ext_patterns=(-name "*")
+fi
+
+# Initialize file counter
+file_count=0
+
+# Use find to get all matching files
+while IFS= read -r -d $'\0' file; do
+    include_file=true
+    relative_path="${file#$scan_folder/}"
+    extension="${file##*.}"
+
+    # Check if file is the output file or matches exclusions
+    if [[ "$relative_path" == *"$base_file"* ]]; then
+        include_file=false
+    elif [ -n "$exclusions" ] && [[ "$relative_path" == *"$exclusions"* ]]; then
+        echo "Skipping excluded path: $relative_path"
+        include_file=false
+    fi
+
+    if [ "$include_file" = true ]; then
+        echo "Adding: $relative_path"
+        {
+            echo -e "\n## $relative_path"
+            echo "```$extension"
+            cat "$file"
+            echo -e "\n```\n"
+        } >> "$output_file"
+        ((file_count++))
+    fi
+done < <(find "$scan_folder" \( "${ext_patterns[@]}" \) -type f -print0)
+
+echo -e "\nFinished! Added $file_count files to $output_file"
