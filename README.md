@@ -15,7 +15,7 @@ A utility for combining multiple files into a single Markdown file with proper c
 
 ### Windows
 
-1. Copy `combine_files.bat` to `C:\Windows\System32\`
+1. Copy `combine.bat` to `C:\Windows\System32\`
 2. Now you can run `combine_files` from any directory
 
 ### Linux
@@ -31,7 +31,7 @@ A utility for combining multiple files into a single Markdown file with proper c
 
 ```bash
 # Windows
-combine_files [folder] [extensions] [exclusions]
+combine [folder] [extensions] [exclusions]
 
 # Linux
 combine [folder] [extensions] [exclusions]
@@ -47,10 +47,10 @@ combine [folder] [extensions] [exclusions]
 
 ```bash
 # Combine all .js, .json, and .html files in current directory, excluding .history folder
-combine_files . "js json html" ".history"
+combine . "js json html" ".history"
 
 # Combine specific file types from a different directory
-combine_files "C:\my-project" "ts tsx css" "node_modules"
+combine "C:\my-project" "ts tsx css" "node_modules"
 
 # Linux examples
 combine . "js json html" ".history"
