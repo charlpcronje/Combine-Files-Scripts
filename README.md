@@ -16,7 +16,7 @@ A utility for combining multiple files into a single Markdown file with proper c
 ### Windows
 
 1. Copy `combine.bat` to `C:\Windows\System32\`
-2. Now you can run `combine_files` from any directory
+2. Now you can run `combine` from any directory
 
 ### Linux
 
