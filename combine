@@ -28,8 +28,9 @@ if [ -f "$output_file" ]; then
     fi
 fi
 
-# Create/overwrite output file with initial heading
+# Create initial file with header
 echo "# Combined Project Files" > "$output_file"
+echo >> "$output_file"
 
 # Display what will be processed
 echo "Processing folder: $scan_folder"
@@ -69,10 +70,12 @@ while IFS= read -r -d $'\0' file; do
     if [ "$include_file" = true ]; then
         echo "Adding: $relative_path"
         {
-            echo -e "\n## $relative_path"
-            echo "```$extension"
+            echo "## $relative_path"
+            echo "\`\`\`$extension"
             cat "$file"
-            echo -e "\n```\n"
+            echo
+            echo "\`\`\`"
+            echo
         } >> "$output_file"
         ((file_count++))
     fi
