@@ -99,15 +99,15 @@ The combined file follows this format:
 # Combined Project Files
 
 ## path/to/file1.js
-```js
+\`\`\`js
 [file1 content]
-```
+\`\`\`
 
 ## path/to/file2.json
-```json
+\`\`\`json
 [file2 content]
+\`\`\`
 ```
-
 ## Notes
 
 - The script automatically excludes the output file from processing
