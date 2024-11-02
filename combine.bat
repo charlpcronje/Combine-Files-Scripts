@@ -82,6 +82,6 @@ for %%x in (%extensions%) do (
     )
 )
 
-echo.
+
 echo Finished! Added %fileCount% files to %outputFile%
 endlocal
