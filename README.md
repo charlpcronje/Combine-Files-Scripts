@@ -107,7 +107,6 @@ The combined file follows this format:
 ```json
 [file2 content]
 ```
-```
 
 ## Notes
 
