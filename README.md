@@ -1,6 +1,6 @@
 # File Combiner
 
-A utility for combining multiple files into a single Markdown file with proper code block formatting.
+Simple batch / Bash Script for combining multiple files into a single Markdown file with proper code block formatting.
 
 ## Features
 
