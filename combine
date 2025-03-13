@@ -1,60 +1,89 @@
 #!/bin/bash
 
-scan_folder="${1:-.}"
-extensions="$2"
-exclusions="$3"
+set -e
 
-if [ "$scan_folder" = "." ]; then
-    scan_folder=$(pwd)
-fi
+scanFolder="${1:-.}"
+extensions="${2:-*}"
+exclusions="${3:-}"
 
-base_file="combined_project_files"
-output_file="$base_file.md"
+# Resolve absolute path
+scanFolder=$(realpath "$scanFolder")
 
-if [ -f "$output_file" ]; then
-    read -p "File $output_file already exists. Overwrite? (Y/N): " overwrite
-    if [[ ${overwrite,,} != "y" ]]; then
+baseFile="combined_project_files"
+outputFile="${baseFile}.md"
+
+# Check if output file already exists and handle overwriting
+if [ -f "$outputFile" ]; then
+    read -p "File $outputFile already exists. Overwrite? (Y/N): " overwrite
+    if [[ "$overwrite" =~ ^[Nn]$ ]]; then
         counter=1
-        while true; do
-            output_file="${base_file}_${counter}.md"
-            [ ! -f "$output_file" ] && break
+        while [ -f "${baseFile}_${counter}.md" ]; do
             ((counter++))
         done
-        echo "Will use $output_file instead."
+        outputFile="${baseFile}_${counter}.md"
+        echo "Will use $outputFile instead."
     else
-        echo "Will overwrite $output_file"
+        echo "Will overwrite $outputFile"
     fi
 fi
 
-echo "# Combined Project Files" > "$output_file"
-echo "" >> "$output_file"
+echo "# Combined Project Files" > "$outputFile"
+echo "" >> "$outputFile"
 
-file_count=0
+fileCount=0
 
-for ext in $extensions; do
-    echo "Searching for *.$ext files..."
+# Convert space-separated extensions into an array
+IFS=' ' read -ra extArray <<< "$extensions"
+
+# Scan and process files
+for ext in "${extArray[@]}"; do
     while IFS= read -r -d '' file; do
-        include_file=true
-        relative_path="${file#$scan_folder/}"
+        relativePath="${file#$scanFolder/}"
 
-        if [[ "$relative_path" == *"$base_file"* ]]; then
-            include_file=false
-        elif [ -n "$exclusions" ] && [[ "$relative_path" == *"$exclusions"* ]]; then
-            echo "Skipping excluded path: $relative_path"
-            include_file=false
+        # Skip files matching exclusions
+        if [[ "$relativePath" == *"$baseFile"* ]]; then
+            continue
         fi
 
-        if [ "$include_file" = true ]; then
-            echo "Adding: $relative_path"
-            echo "## $relative_path" >> "$output_file"
-            echo "\`\`\`$ext" >> "$output_file"
-            cat "$file" >> "$output_file"
-            echo "" >> "$output_file"
-            echo "\`\`\`" >> "$output_file"
-            echo "" >> "$output_file"
-            ((file_count++))
+        if [[ -n "$exclusions" && "$relativePath" == *"$exclusions"* ]]; then
+            continue
         fi
-    done < <(find "$scan_folder" -name "*.$ext" -type f -print0)
+
+        echo "Adding: $relativePath"
+        echo "## $relativePath" >> "$outputFile"
+        echo '```'"$ext" >> "$outputFile"
+        cat "$file" >> "$outputFile"
+        echo "" >> "$outputFile"
+        echo '```' >> "$outputFile"
+        echo "" >> "$outputFile"
+        ((fileCount++))
+    done < <(find "$scanFolder" -type f -name "*.$ext" -print0)
 done
 
-echo "Finished! Added $file_count files to $output_file"
+echo "Finished! Added $fileCount files to $outputFile"
+
+# ===========================
+# USAGE EXAMPLES
+# ===========================
+# 1. Combine all files in the current directory with extensions .sh and .py:
+#    comb . "sh py"
+#
+# 2. Combine all .txt and .md files inside a specific directory:
+#    comb /path/to/folder "txt md"
+#
+# 3. Combine all .js files while excluding files containing "test" in the name:
+#    comb /var/www "js" "test"
+#
+# 4. Combine all files of any type (wildcard *):
+#    comb /projects "*"
+#
+# 5. Run the script without arguments (defaults to current directory and all files):
+#    comb
+#
+# 6. Add it globally:
+#    sudo mv comb /usr/local/bin/
+#    sudo chmod +x /usr/local/bin/comb
+#
+# Now you can run `comb` from anywhere on your server!
+
+
