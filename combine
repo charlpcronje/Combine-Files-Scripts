@@ -1,66 +1,68 @@
 #!/bin/bash
-
-set -e
+# File: ./scan_and_combine.sh
 
 scanFolder="${1:-.}"
-extensions="${2:-*}"
+extensions="${2:-}"
 exclusions="${3:-}"
 
-# Resolve absolute path
-scanFolder=$(realpath "$scanFolder")
+[[ "$scanFolder" == "." ]] && scanFolder="$(pwd)"
 
-baseFile="combined_project_files"
-outputFile="${baseFile}.md"
+baseFileName="output"
+outputFile="$baseFileName.md"
+counter=1
 
-# Check if output file already exists and handle overwriting
-if [ -f "$outputFile" ]; then
-    read -p "File $outputFile already exists. Overwrite? (Y/N): " overwrite
-    if [[ "$overwrite" =~ ^[Nn]$ ]]; then
-        counter=1
-        while [ -f "${baseFile}_${counter}.md" ]; do
-            ((counter++))
-        done
-        outputFile="${baseFile}_${counter}.md"
-        echo "Will use $outputFile instead."
-    else
-        echo "Will overwrite $outputFile"
-    fi
-fi
-
-echo "# Combined Project Files" > "$outputFile"
-echo "" >> "$outputFile"
+# Ensure unique filename to avoid overwriting
+while [ -e "$outputFile" ]; do
+  outputFile="${baseFileName}_$counter.md"
+  ((counter++))
+done
 
 fileCount=0
 
-# Convert space-separated extensions into an array
-IFS=' ' read -ra extArray <<< "$extensions"
+# Convert extensions and exclusions to arrays
+IFS=',' read -ra extArray <<< "$extensions"
+IFS=',' read -ra exclusionArray <<< "$exclusions"
 
-# Scan and process files
+# Function to check if file matches any exclusion
+is_excluded() {
+  local file="$1"
+  for excl in "${exclusionArray[@]}"; do
+    if [[ "$file" == *"$exclusion"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Scan files and append content
 for ext in "${extArray[@]}"; do
-    while IFS= read -r -d '' file; do
-        relativePath="${file#$scanFolder/}"
+  while IFS= read -r -d '' filepath; do
+    relativePath="${filepath#$scanFolder/}"
 
-        # Skip files matching exclusions
-        if [[ "$relativePath" == *"$baseFile"* ]]; then
-            continue
-        fi
+    # Skip if file matches exclusions
+    skip=false
+    for exclusion in "${exclusionArray[@]}"; do
+      if [[ "$relativePath" == *"$exclusion"* ]]; then
+        skip=true
+        break
+      fi
+    done
+    $skip && continue
 
-        if [[ -n "$exclusions" && "$relativePath" == *"$exclusions"* ]]; then
-            continue
-        fi
-
-        echo "Adding: $relativePath"
-        echo "## $relativePath" >> "$outputFile"
-        echo '```'"$ext" >> "$outputFile"
-        cat "$file" >> "$outputFile"
-        echo "" >> "$outputFile"
-        echo '```' >> "$outputFile"
-        echo "" >> "$outputFile"
-        ((fileCount++))
-    done < <(find "$scanFolder" -type f -name "*.$ext" -print0)
+    echo "Adding: $relativePath"
+    {
+      echo "## $relativePath"
+      echo '```'"${ext}"
+      cat "$filepath"
+      echo -e "\n\`\`\`\n"
+    } >> "$outputFile"
+    ((fileCount++))
+  done < <(find "$scanFolder" -type f -name "*.$ext" -print0)
 done
 
 echo "Finished! Added $fileCount files to $outputFile"
+
+
 
 # ===========================
 # USAGE EXAMPLES
@@ -85,5 +87,3 @@ echo "Finished! Added $fileCount files to $outputFile"
 #    sudo chmod +x /usr/local/bin/comb
 #
 # Now you can run `comb` from anywhere on your server!
-
-
