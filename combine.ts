@@ -1,9 +1,12 @@
 // combine.ts
 // Deno version: Compile with: deno compile --allow-read --allow-write combine.ts
 // This app recursively scans the specified folder, concatenates files with specified extensions
-// (ignoring files/directories matching any exclusion token), and outputs a Markdown file.
+// (ignoring files/directories based on command-line exclusion tokens and .gitignore/.ignore),
+// and outputs a Markdown file.
 
 import { walk } from "https://deno.land/std@0.200.0/fs/walk.ts";
+import { join, relative } from "https://deno.land/std@0.200.0/path/mod.ts";
+import ignore from "https://deno.land/x/ignore@0.2.4/mod.ts";
 
 // Retrieve command-line arguments
 const args = Deno.args;
@@ -48,6 +51,31 @@ try {
   if (!(err instanceof Deno.errors.NotFound)) throw err;
 }
 
+// Create an instance of the ignore parser if a .gitignore or .ignore file exists.
+let ig: ReturnType<typeof ignore> | null = null;
+try {
+  const gitignorePath = join(scanFolder, ".gitignore");
+  const statGit = await Deno.stat(gitignorePath);
+  if (statGit.isFile) {
+    const gitignoreContent = await Deno.readTextFile(gitignorePath);
+    ig = ignore().add(gitignoreContent);
+    console.log("Using .gitignore rules for filtering.");
+  }
+} catch (_err) {
+  // If .gitignore not found, try .ignore
+  try {
+    const ignorePath = join(scanFolder, ".ignore");
+    const statIgnore = await Deno.stat(ignorePath);
+    if (statIgnore.isFile) {
+      const ignoreContent = await Deno.readTextFile(ignorePath);
+      ig = ignore().add(ignoreContent);
+      console.log("Using .ignore rules for filtering.");
+    }
+  } catch (_err2) {
+    // No ignore file found; proceed without gitignore filtering.
+  }
+}
+
 // Open the output file for writing.
 const encoder = new TextEncoder();
 const output = await Deno.open(outputFile, { write: true, create: true, truncate: true });
@@ -57,7 +85,7 @@ await output.write(encoder.encode("# Combined Project Files\n\n"));
 
 let fileCount = 0;
 
-// Construct skip regex patterns for directories from the exclusion tokens
+// Construct skip regex patterns for directories from the command-line exclusion tokens.
 const skipPatterns = exclusions.map(token => new RegExp(token, "i"));
 
 // Walk through the scanFolder recursively, skipping directories that match any exclusion token.
@@ -68,13 +96,22 @@ for await (const entry of walk(scanFolder, {
 })) {
   if (!entry.isFile) continue;
 
-  // Check file extension
+  // Compute relative path to apply ignore rules correctly.
+  const relPath = relative(scanFolder, entry.path);
+
+  // Check against .gitignore/.ignore rules if available.
+  if (ig && ig.ignores(relPath)) {
+    console.log(`Skipping (ignored by git rules): ${entry.path}`);
+    continue;
+  }
+
+  // Check file extension.
   const fileExt = entry.name.split(".").pop()?.toLowerCase() ?? "";
   if (extensions.length > 0 && !extensions.includes(fileExt)) {
     continue;
   }
 
-  // Additional check: exclude files whose full path contains any exclusion token.
+  // Additional check: exclude files whose full path contains any command-line exclusion token.
   let shouldExclude = false;
   for (const token of exclusions) {
     if (entry.path.toLowerCase().includes(token.toLowerCase())) {
