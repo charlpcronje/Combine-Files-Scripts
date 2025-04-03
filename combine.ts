@@ -1,11 +1,14 @@
 // combine.ts
 // Deno version: Compile with: deno compile --allow-read --allow-write --no-check combine.ts
 // This app recursively scans the specified folder, concatenates files with specified extensions
-// (ignoring files/directories based on command-line exclusion tokens and .gitignore/.ignore),
+// (ignoring files/directories based on command-line exclusion tokens and .gitignore/.ignore)
 // and outputs a Markdown file.
 //
-// New feature: Before processing, the app lists all ignored files and directories found and
-// waits for the user to press Enter before starting.
+// New features:
+// - Checks for an ignore file (.gitignore or .ignore) and displays its name and content.
+// - Pauses (prompts for Enter) so you can confirm that the ignore file was loaded.
+// - Debugs each path in both the pre-scan and main processing loops, showing which ignore rule (if any)
+//   is matching and what ig.ignores returns for each file.
 
 import { walk } from "https://deno.land/std@0.200.0/fs/walk.ts";
 import { join, relative } from "https://deno.land/std@0.200.0/path/mod.ts";
@@ -55,15 +58,19 @@ try {
   if (!(err instanceof Deno.errors.NotFound)) throw err;
 }
 
-// Create an instance of the ignore parser if a .gitignore or .ignore file exists.
+// Check for ignore files (.gitignore or .ignore) and display their content.
 let ig: ReturnType<typeof ignore> | null = null;
+let ignoreFileName: string | null = null;
+let ignoreFileContent: string | null = null;
+
 try {
   const gitignorePath = join(scanFolder, ".gitignore");
   const statGit = await Deno.stat(gitignorePath);
   if (statGit.isFile) {
-    const gitignoreContent = await Deno.readTextFile(gitignorePath);
-    ig = ignore().add(gitignoreContent);
-    console.log("Using .gitignore rules for filtering.");
+    ignoreFileName = ".gitignore";
+    ignoreFileContent = await Deno.readTextFile(gitignorePath);
+    ig = ignore().add(ignoreFileContent);
+    console.log(`Found ${ignoreFileName} with the following rules:\n${ignoreFileContent}`);
   }
 } catch (_err) {
   // If .gitignore not found, try .ignore
@@ -71,14 +78,18 @@ try {
     const ignorePath = join(scanFolder, ".ignore");
     const statIgnore = await Deno.stat(ignorePath);
     if (statIgnore.isFile) {
-      const ignoreContent = await Deno.readTextFile(ignorePath);
-      ig = ignore().add(ignoreContent);
-      console.log("Using .ignore rules for filtering.");
+      ignoreFileName = ".ignore";
+      ignoreFileContent = await Deno.readTextFile(ignorePath);
+      ig = ignore().add(ignoreFileContent);
+      console.log(`Found ${ignoreFileName} with the following rules:\n${ignoreFileContent}`);
     }
   } catch (_err2) {
     console.log("No .gitignore or .ignore file found. Proceeding without gitignore rules.");
   }
 }
+
+// Wait for user input before proceeding
+prompt("\nPress Enter to begin processing...");
 
 // Pre-scan: Walk the folder to list ignored items.
 const ignoredFiles: string[] = [];
@@ -92,6 +103,21 @@ for await (const entry of walk(scanFolder, { includeFiles: true, includeDirs: tr
   const isDir = entry.isDirectory;
   if (isDir && !relPath.endsWith("/")) {
     relPath += "/";
+  }
+  
+  // Skip the root directory or empty relative paths.
+  if (relPath === "/" || relPath === "." || relPath === "") continue;
+  
+  // DEBUG: Log each path being checked.
+  //console.log("DEBUG: Pre-scan Checking path:", relPath);
+  
+  // DEBUG: For each rule, print the exact rule text if it matches.
+  if (ig && (ig as any)._rules) {
+    (ig as any)._rules.forEach((rule: any, idx: number) => {
+      if (rule.regex && rule.regex.test(relPath)) {
+        console.log(`DEBUG: [Rule ${idx}] "${rule.origin}" matched path: ${relPath}`);
+      }
+    });
   }
   
   // Check command-line exclusion tokens.
@@ -125,7 +151,7 @@ if (ignoredFiles.length > 0) {
 }
 
 // Wait for user input before starting the combination.
-prompt("\nPress Enter to begin processing...");
+prompt("\nPress Enter to start processing files...");
 
 // Open the output file for writing.
 const encoder = new TextEncoder();
@@ -150,10 +176,14 @@ for await (const entry of walk(scanFolder, {
   // Compute a normalized relative path.
   let relPath = relative(scanFolder, entry.path).replace(/\\/g, "/");
 
-  // Check against gitignore rules if available.
-  if (ig && ig.ignores(relPath)) {
-    console.log(`Skipping (ignored by git rules): ${entry.path}`);
-    continue;
+  // DEBUG: Print the result of the ignore check.
+  if (ig) {
+    const ignored = ig.ignores(relPath);
+    console.log(`DEBUG: ig.ignores("${relPath}") returns ${ignored}`);
+    if (ignored) {
+      // console.log(`Skipping (ignored by git rules): ${entry.path}`);
+      continue;
+    }
   }
 
   // Check file extension.
