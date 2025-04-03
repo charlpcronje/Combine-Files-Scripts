@@ -1,12 +1,16 @@
 // combine.ts
-// Deno version: Compile with: deno compile --allow-read --allow-write combine.ts
+// Deno version: Compile with: deno compile --allow-read --allow-write --no-check combine.ts
 // This app recursively scans the specified folder, concatenates files with specified extensions
 // (ignoring files/directories based on command-line exclusion tokens and .gitignore/.ignore),
 // and outputs a Markdown file.
+//
+// New feature: Before processing, the app lists all ignored files and directories found and
+// waits for the user to press Enter before starting.
 
 import { walk } from "https://deno.land/std@0.200.0/fs/walk.ts";
 import { join, relative } from "https://deno.land/std@0.200.0/path/mod.ts";
-import ignore from "https://deno.land/x/ignore@0.2.4/mod.ts";
+// Import the npm 'ignore' package via esm.sh
+import ignore from "https://esm.sh/ignore@5.2.0";
 
 // Retrieve command-line arguments
 const args = Deno.args;
@@ -72,9 +76,56 @@ try {
       console.log("Using .ignore rules for filtering.");
     }
   } catch (_err2) {
-    // No ignore file found; proceed without gitignore filtering.
+    console.log("No .gitignore or .ignore file found. Proceeding without gitignore rules.");
   }
 }
+
+// Pre-scan: Walk the folder to list ignored items.
+const ignoredFiles: string[] = [];
+const ignoredDirs: string[] = [];
+
+for await (const entry of walk(scanFolder, { includeFiles: true, includeDirs: true })) {
+  // Compute a relative path and normalize to forward slashes.
+  let relPath = relative(scanFolder, entry.path).replace(/\\/g, "/");
+  
+  // For directories, add a trailing slash for proper matching.
+  const isDir = entry.isDirectory;
+  if (isDir && !relPath.endsWith("/")) {
+    relPath += "/";
+  }
+  
+  // Check command-line exclusion tokens.
+  const excludedByToken = exclusions.some(token => relPath.toLowerCase().includes(token.toLowerCase()));
+  
+  // Check gitignore/.ignore rules if available.
+  const excludedByGitignore = ig ? ig.ignores(relPath) : false;
+  
+  if (excludedByToken || excludedByGitignore) {
+    if (isDir) {
+      ignoredDirs.push(relPath);
+    } else {
+      ignoredFiles.push(relPath);
+    }
+  }
+}
+
+// Display the ignored items.
+console.log("\nIgnored Directories:");
+if (ignoredDirs.length > 0) {
+  ignoredDirs.forEach(dir => console.log("  " + dir));
+} else {
+  console.log("  (None)");
+}
+
+console.log("\nIgnored Files:");
+if (ignoredFiles.length > 0) {
+  ignoredFiles.forEach(file => console.log("  " + file));
+} else {
+  console.log("  (None)");
+}
+
+// Wait for user input before starting the combination.
+prompt("\nPress Enter to begin processing...");
 
 // Open the output file for writing.
 const encoder = new TextEncoder();
@@ -85,21 +136,21 @@ await output.write(encoder.encode("# Combined Project Files\n\n"));
 
 let fileCount = 0;
 
-// Construct skip regex patterns for directories from the command-line exclusion tokens.
+// Construct skip regex patterns for directories from the command-line exclusions.
 const skipPatterns = exclusions.map(token => new RegExp(token, "i"));
 
-// Walk through the scanFolder recursively, skipping directories that match any exclusion token.
+// Main processing: Walk through the folder recursively.
 for await (const entry of walk(scanFolder, {
   includeFiles: true,
   includeDirs: false,
-  skip: skipPatterns, // this efficiently bypasses entire directories (e.g., node_modules)
+  skip: skipPatterns, // efficiently bypass directories (e.g., node_modules)
 })) {
   if (!entry.isFile) continue;
 
-  // Compute relative path to apply ignore rules correctly.
-  const relPath = relative(scanFolder, entry.path);
+  // Compute a normalized relative path.
+  let relPath = relative(scanFolder, entry.path).replace(/\\/g, "/");
 
-  // Check against .gitignore/.ignore rules if available.
+  // Check against gitignore rules if available.
   if (ig && ig.ignores(relPath)) {
     console.log(`Skipping (ignored by git rules): ${entry.path}`);
     continue;
@@ -111,18 +162,9 @@ for await (const entry of walk(scanFolder, {
     continue;
   }
 
-  // Additional check: exclude files whose full path contains any command-line exclusion token.
-  let shouldExclude = false;
-  for (const token of exclusions) {
-    if (entry.path.toLowerCase().includes(token.toLowerCase())) {
-      shouldExclude = true;
-      break;
-    }
-  }
-  // Prevent including the output file itself.
-  if (entry.path.includes(baseFile)) {
-    shouldExclude = true;
-  }
+  // Additional check: exclude files whose path contains any command-line exclusion token.
+  const shouldExclude = exclusions.some(token => entry.path.toLowerCase().includes(token.toLowerCase())) ||
+                        entry.path.includes(baseFile);
   if (shouldExclude) continue;
 
   // Log and append the file’s content to the output Markdown.
